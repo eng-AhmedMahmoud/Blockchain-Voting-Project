@@ -1,0 +1,85 @@
+pragma solidity ^0.8.0;
+
+contract ballot {
+  //to declare a new type which will be used for variables later to represent a single vote
+  struct Vote { 
+    uint weight; //accumulated by delegation
+    bool voted; //if it’s true, means already voted
+    uint vote; //index of voted proposal
+  }
+
+  //this is a type of single proposal
+  struct Proposal {
+    bytes32 name; 
+    uint voteCount; //number of accumulated votes
+  }
+
+  //defining time stages for the voting process.
+  enum Stage {Intro, Registration, Voting, Completed} 
+  Stage public stage = Stage.Intro;
+  address public chairperson; //owner of the contract
+
+  //this declares a state variable that stores a ‘Vote’ struct for each possible address.
+  mapping(address => Vote) public voters;
+
+  //a dynamically-sized array of ‘Proposal’ structs
+  Proposal[] public proposals;
+
+  event votingCompleted();
+
+  uint startTime;
+
+  modifier validStage(Stage reqStage) {
+    if (block.timestamp > (startTime + 100 seconds)) {
+      stage = Stage.Completed; emit votingCompleted();
+    } else if (block.timestamp > (startTime + 50 seconds)) {
+      stage = Stage.Voting;
+    }
+
+    require(stage == reqStage, "Not valid in current stage.");
+    _;
+  }
+
+  //create a new ballot to choose one of the ‘proposalName’.
+  constructor(uint256 _numProposals) {
+    chairperson = msg.sender;
+    voters[chairperson].weight = 1;
+    _numProposals=proposals.length; // readonly error
+
+    stage= Stage.Registration;
+    startTime = block.timestamp;
+  }
+
+  // give ‘voter’ the right to vote on this ballot.
+  //may only be called by ‘chairperson’.
+  function giveRightToVote(address voter) public validStage(Stage.Registration) {
+    require(msg.sender == chairperson, "Only the chairperson can give the right to vote");
+    require(!voters[voter].voted, "Already voted");
+    voters[voter].weight = 1;
+    voters[voter].voted = false;
+  }
+
+  //give your vote to proposal ‘proposals[proposal].name’.
+  function vote(uint proposal) public validStage(Stage.Voting) {
+    Vote storage sender = voters[msg.sender];
+    require(sender.weight != 0, "You have no right to vote.");
+    require(!sender.voted, "You have already voted.");
+    sender.voted = true; 
+    sender.vote = proposal;
+
+    //if ‘proposal’ is out of the range of the array,
+    //this will throw automatically and revert all changes.
+    proposals[proposal].voteCount += sender.weight;
+  }
+
+  //computes the winning proposal taking all previous votes into account
+  function winningProposal() public validStage(Stage.Completed) returns (uint winningProposal_) {
+    uint winningVoteCount = 0;
+    for (uint8 p = 0; p < proposals.length; p++) {
+      if (proposals[p].voteCount > winningVoteCount) {
+        winningVoteCount = proposals[p].voteCount;
+        winningProposal_ = p;
+      }
+    }
+  }
+}
